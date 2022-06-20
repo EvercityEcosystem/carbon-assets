@@ -173,7 +173,7 @@ pub mod pallet {
 
 	#[pallet::config]
 	/// The module configuration trait.
-	pub trait Config<I: 'static = ()>: frame_system::Config {
+	pub trait Config<I: 'static = ()>: frame_system::Config + pallet_timestamp::Config {
 		/// The overarching event type.
 		type Event: From<Event<Self, I>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -316,7 +316,20 @@ pub mod pallet {
 
 	#[pallet::type_value]
 	pub(super) fn InitialAssetId() -> AssetId { 100u64 }
-	// pub(super) fn InitialAssetId<T: Config<I>, I: 'static>() -> AssetId { 100u64 }
+
+	/// Carbon Credits Lots registry - for every AccountId and AssetId
+	#[pallet::storage]
+	#[pallet::getter(fn lots)]
+	pub(super) type CarbonCreditLotRegistry<T: Config<I>, I: 'static = ()> = StorageNMap<
+		_,
+		(
+			NMapKey<Blake2_128Concat, AssetId>,
+			NMapKey<Blake2_128Concat, T::AccountId>, // owner
+			NMapKey<Blake2_128Concat, T::Moment>, // expiration date
+		),
+		CarbonCreditsPackageLot<T::AccountId, T::Balance, T::Balance>,
+		OptionQuery
+	>;
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config<I>, I: 'static = ()> {
@@ -569,7 +582,7 @@ pub mod pallet {
 		/// Emits `Created` event when successful.
 		/// Emits `MetadataSet` with generated `name` and `symbol`.
 		///
-		#[pallet::weight(T::WeightInfo::create())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::create())]
 		pub fn create(
 			origin: OriginFor<T>,
 		) -> DispatchResult {
@@ -645,7 +658,7 @@ pub mod pallet {
 		/// Emits `ForceCreated` event when successful.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::force_create())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::force_create())]
 		pub fn force_create(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -676,7 +689,7 @@ pub mod pallet {
 		/// - `c = (witness.accounts - witness.sufficients)`
 		/// - `s = witness.sufficients`
 		/// - `a = witness.approvals`
-		#[pallet::weight(T::WeightInfo::destroy(
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::destroy(
 			witness.accounts.saturating_sub(witness.sufficients),
  			witness.sufficients,
  			witness.approvals,
@@ -691,7 +704,7 @@ pub mod pallet {
 				Err(origin) => Some(ensure_signed(origin)?),
 			};
 			let details = Self::do_destroy(id, witness, maybe_check_owner)?;
-			Ok(Some(T::WeightInfo::destroy(
+			Ok(Some(<T as pallet::Config<I>>::WeightInfo::destroy(
 				details.accounts.saturating_sub(details.sufficients),
 				details.sufficients,
 				details.approvals,
@@ -710,7 +723,7 @@ pub mod pallet {
 		///
 		/// Weight: `O(1)`
 		/// 
-		#[pallet::weight(T::WeightInfo::mint())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::mint())]
 		pub fn mint(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -742,7 +755,7 @@ pub mod pallet {
 		///
 		/// Weight: `O(1)`
 		/// Modes: Post-existence of `who`; Pre & post Zombie-status of `who`.
-		#[pallet::weight(T::WeightInfo::burn())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::burn())]
 		pub fn burn(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -831,7 +844,7 @@ pub mod pallet {
 		/// Weight: `O(1)`
 		/// Modes: Pre-existence of `target`; Post-existence of sender; Account pre-existence of
 		/// `target`.
-		#[pallet::weight(T::WeightInfo::transfer())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::transfer())]
 		pub fn transfer(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -863,7 +876,7 @@ pub mod pallet {
 		/// Weight: `O(1)`
 		/// Modes: Pre-existence of `target`; Post-existence of sender; Account pre-existence of
 		/// `target`.
-		#[pallet::weight(T::WeightInfo::transfer_keep_alive())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::transfer_keep_alive())]
 		pub fn transfer_keep_alive(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -896,7 +909,7 @@ pub mod pallet {
 		/// Weight: `O(1)`
 		/// Modes: Pre-existence of `dest`; Post-existence of `source`; Account pre-existence of
 		/// `dest`.
-		#[pallet::weight(T::WeightInfo::force_transfer())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::force_transfer())]
 		pub fn force_transfer(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -922,7 +935,7 @@ pub mod pallet {
 		/// Emits `Frozen`.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::freeze())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::freeze())]
 		pub fn freeze(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -953,7 +966,7 @@ pub mod pallet {
 		/// Emits `Thawed`.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::thaw())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::thaw())]
 		pub fn thaw(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -983,7 +996,7 @@ pub mod pallet {
 		/// Emits `Frozen`.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::freeze_asset())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::freeze_asset())]
 		pub fn freeze_asset(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1010,7 +1023,7 @@ pub mod pallet {
 		/// Emits `Thawed`.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::thaw_asset())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::thaw_asset())]
 		pub fn thaw_asset(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1038,7 +1051,7 @@ pub mod pallet {
 		/// Emits `OwnerChanged`.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::transfer_ownership())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::transfer_ownership())]
 		pub fn transfer_ownership(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1081,7 +1094,7 @@ pub mod pallet {
 		/// Emits `MetadataSet`.
 		///
 		/// Weight: `O(N + S)` where N and S are the length of the name and symbol respectively.
-		#[pallet::weight(T::WeightInfo::force_set_metadata(name.len() as u32, symbol.len() as u32))]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::force_set_metadata(name.len() as u32, symbol.len() as u32))]
 		pub fn force_set_metadata(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1145,7 +1158,7 @@ pub mod pallet {
 		/// Emits `MetadataCleared`.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::force_clear_metadata())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::force_clear_metadata())]
 		pub fn force_clear_metadata(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1183,7 +1196,7 @@ pub mod pallet {
 		/// Emits `AssetStatusChanged` with the identity of the asset.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::force_asset_status())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::force_asset_status())]
 		pub fn force_asset_status(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1233,7 +1246,7 @@ pub mod pallet {
 		/// Emits `ApprovedTransfer` on success.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::approve_transfer())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::approve_transfer())]
 		pub fn approve_transfer(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1258,7 +1271,7 @@ pub mod pallet {
 		/// Emits `ApprovalCancelled` on success.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::cancel_approval())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::cancel_approval())]
 		pub fn cancel_approval(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1291,7 +1304,7 @@ pub mod pallet {
 		/// Emits `ApprovalCancelled` on success.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::force_cancel_approval())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::force_cancel_approval())]
 		pub fn force_cancel_approval(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1338,7 +1351,7 @@ pub mod pallet {
 		/// Emits `TransferredApproved` on success.
 		///
 		/// Weight: `O(1)`
-		#[pallet::weight(T::WeightInfo::transfer_approved())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::transfer_approved())]
 		pub fn transfer_approved(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
@@ -1361,7 +1374,7 @@ pub mod pallet {
 		/// - `id`: The identifier of the asset for the account to be created.
 		///
 		/// Emits `Touched` event when successful.
-		#[pallet::weight(T::WeightInfo::mint())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::mint())]
 		pub fn touch(origin: OriginFor<T>, #[pallet::compact] id: AssetId) -> DispatchResult {
 			Self::do_touch(id, ensure_signed(origin)?)
 		}
@@ -1374,13 +1387,61 @@ pub mod pallet {
 		/// - `allow_burn`: If `true` then assets may be destroyed in order to complete the refund.
 		///
 		/// Emits `Refunded` event when successful.
-		#[pallet::weight(T::WeightInfo::mint())]
+		#[pallet::weight(<T as pallet::Config<I>>::WeightInfo::mint())]
 		pub fn refund(
 			origin: OriginFor<T>,
 			#[pallet::compact] id: AssetId,
 			allow_burn: bool,
 		) -> DispatchResult {
 			Self::do_refund(id, ensure_signed(origin)?, allow_burn)
+		}
+
+		/// Method: create_carbon_credit_lot
+		/// Arguments: origin: OriginFor<T> - transaction caller
+		///			   asset_id: CarbonCreditsId<T> - Carbon Credit asset id
+		///			   new_lot: CarbonCreditsPackageLotOf<T> - new lot of Carbon Credits to auction off
+		/// Access: for Carbon Credits holder
+		/// 
+		/// Creates new Carbon Credits Lot of given asset_id. 
+		/// CarbonCreditsPackageLotOf new_lot contains:
+		/// 			"target_bearer" - optional, if set - lot is private
+		/// 			"deadline" - lot can be sold only before deadline
+		/// 			"amount" - amount of Carbon Credits for sell
+		/// 			"price_per_item" - price per one Carbon Credit
+		/// Function checks if deadline is correct, if caller has enough Carbon Credits.
+		/// Function purges another expired lots for this caller.
+		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(3, 2))]
+		pub fn create_carbon_credit_lot(
+			origin: OriginFor<T>,
+			#[pallet::compact] asset_id: AssetId,
+			new_lot: CarbonCreditsPackageLot<T::AccountId, T::Balance, T::Balance>,
+		) -> DispatchResult {
+			Ok(())
+		}
+
+		/// Method: buy_carbon_credit_lot_units
+		/// Arguments: origin: OriginFor<T> - transaction caller
+		///				seller: T::AccountId - lot seller
+		///				asset_id: CarbonCreditsId<T> - Carbon Credit asset id
+		///				lot: CarbonCreditsPackageLotOf<T> - from whitch Carbon Credits are bought 
+		///				amount: CarbonCreditsBalance<T> - amount of Carbon Credits to buy
+		/// Access: any account having enough EverUSD,
+		/// 		for private lot - only account in that lot
+		/// 
+		/// Buys a specified amount of Carbon Credits from specified lot created by 
+		/// create_carbon_credit_lot(..) call. Lot should not be expired. 
+		/// Buyer should have enough EverUSD balance. If lot is private 
+		/// (lot.targer_bearer are set) - only target_bearer can buy from that lot. 
+		/// After selling other expired seller's lots are purged.
+		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(5, 3))]
+		pub fn buy_carbon_credit_lot_units(
+			origin: OriginFor<T>,
+			#[pallet::compact] asset_id: AssetId,
+			seller: T::AccountId,
+			mut lot: CarbonCreditsPackageLot<T::AccountId, T::Balance, T::Balance>,
+			#[pallet::compact] amount: T::Balance,
+		) -> DispatchResult {
+			Ok(())
 		}
 	}
 }

@@ -29,6 +29,24 @@ pub(super) type DepositBalanceOf<T, I = ()> =
 pub(super) type AssetAccountOf<T, I> =
 	AssetAccount<<T as Config<I>>::Balance, DepositBalanceOf<T, I>, <T as Config<I>>::Extra>;
 
+pub const EVERUSD_ID: AssetId = 1;
+pub const EVERUSD_NAME: &[u8] = "EVERUSD".as_bytes();
+
+/// Struct representing pack of carbon assets for sale.
+/// Can include target bearer (to sell only to them)
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
+pub struct CarbonCreditsPackageLot<AccountId, Balance, EverUSD> 
+	// where CarbonCreditsPackageLot<AccountId, Moment, Balance, EverUSD>: codec::Encode 
+	{
+	/// If set - only targer bearer can buy a lot, if None - anyone can buy.
+	pub target_bearer: Option<AccountId>,
+	/// Amount of Carbon Assets for sale in this lot.
+	pub amount: Balance,
+	/// Total price for all Carbon Assets in the lot.
+	pub total_price: EverUSD,
+}
+	
+
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
 pub struct AssetDetails<Balance, AccountId, DepositBalance> {
 	/// Created asset.
@@ -115,6 +133,8 @@ impl<Balance> ExistenceReason<Balance> {
 pub struct AssetAccount<Balance, DepositBalance, Extra> {
 	/// The balance.
 	pub(super) balance: Balance,
+	/// The reserved balance, available in lot, can not transfer/burn this.
+	pub(super) reserved_balance: Balance,
 	/// Whether the account is frozen.
 	pub(super) is_frozen: bool,
 	/// The reason for the existence of the account.
