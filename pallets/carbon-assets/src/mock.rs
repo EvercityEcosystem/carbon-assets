@@ -22,7 +22,7 @@ use crate as pallet_assets;
 
 use frame_support::{
 	construct_runtime,
-	traits::{ConstU32, ConstU64, GenesisBuild},
+	traits::{ConstU32, ConstU64, GenesisBuild}, parameter_types,
 };
 use sp_core::H256;
 use sp_runtime::{
@@ -44,9 +44,22 @@ construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
+		Timestamp: pallet_timestamp::{Pallet, Call},
 		Assets: pallet_assets::{Pallet, Call, Storage, Event<T>},
 	}
 );
+
+parameter_types! {
+    pub const MinimumPeriod: u64 = 6000 / 2;
+}
+
+impl pallet_timestamp::Config for Test {
+    /// A timestamp: milliseconds since the unix epoch.
+    type Moment = u64;
+    type OnTimestampSet = ();
+    type MinimumPeriod = MinimumPeriod;
+    type WeightInfo = ();
+}
 
 impl pallet_randomness_collective_flip::Config for Test {}
 
@@ -153,16 +166,13 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 		custodian: Some(CUSTODIAN),
 		assets: vec![
 			// id, owner, is_sufficient, min_balance
-			(999, 0, true, 1),
+			(EVERUSD_ID, CUSTODIAN, true, 1),
 		],
 		metadata: vec![
 			// id, name, symbol, decimals
-			(999, "Token Name".into(), "TOKEN".into(), 10),
+			(EVERUSD_ID, EVERUSD_NAME.into(), EVERUSD_NAME.into(), EVERUSD_DECIMALS),
 		],
-		accounts: vec![
-			// id, account_id, balance
-			(999, 1, 100),
-		],
+		accounts: Default::default(),
 	};
 
 	config.assimilate_storage(&mut storage).unwrap();

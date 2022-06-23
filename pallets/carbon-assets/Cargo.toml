@@ -6,7 +6,7 @@ edition = "2021"
 license = "Apache-2.0"
 homepage = "https://evercity.io"
 repository = "https://github.com/EvercityEcosystem/carbon-assets.git"
-description = "Pallet for evercity carbon credits (based on FRAME asset management pallet)"
+description = "Pallet for evercity Carbon asset (based on FRAME asset management pallet)"
 readme = "README.md"
 
 [package.metadata.docs.rs]

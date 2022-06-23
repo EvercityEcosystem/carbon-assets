@@ -31,13 +31,12 @@ pub(super) type AssetAccountOf<T, I> =
 
 pub const EVERUSD_ID: AssetId = 1;
 pub const EVERUSD_NAME: &[u8] = "EVERUSD".as_bytes();
+pub const EVERUSD_DECIMALS: u8 = 9;
 
 /// Struct representing pack of carbon assets for sale.
 /// Can include target bearer (to sell only to them)
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
-pub struct CarbonCreditsPackageLot<AccountId, Balance, EverUSD> 
-	// where CarbonCreditsPackageLot<AccountId, Moment, Balance, EverUSD>: codec::Encode 
-	{
+pub struct CarbonAssetLot<AccountId, Balance, EverUSD> {
 	/// If set - only targer bearer can buy a lot, if None - anyone can buy.
 	pub target_bearer: Option<AccountId>,
 	/// Amount of Carbon Assets for sale in this lot.

@@ -317,17 +317,17 @@ pub mod pallet {
 	#[pallet::type_value]
 	pub(super) fn InitialAssetId() -> AssetId { 100u64 }
 
-	/// Carbon Credits Lots registry - for every AccountId and AssetId
+	/// Carbon asset Lots registry - for every AccountId and AssetId
 	#[pallet::storage]
 	#[pallet::getter(fn lots)]
-	pub(super) type CarbonCreditLotRegistry<T: Config<I>, I: 'static = ()> = StorageNMap<
+	pub(super) type CarbonAssetLotRegistry<T: Config<I>, I: 'static = ()> = StorageNMap<
 		_,
 		(
 			NMapKey<Blake2_128Concat, AssetId>,
 			NMapKey<Blake2_128Concat, T::AccountId>, // owner
 			NMapKey<Blake2_128Concat, T::Moment>, // expiration date
 		),
-		CarbonCreditsPackageLot<T::AccountId, T::Balance, T::Balance>,
+		CarbonAssetLot<T::AccountId, T::Balance, T::Balance>,
 		OptionQuery
 	>;
 
@@ -499,8 +499,15 @@ pub mod pallet {
 		CustodianSet { custodian: T::AccountId},
 		/// Metadata has been updated with `url` and `data_ipfs`.
 		MetadataUpdated { asset_id: AssetId, url: Vec<u8>, data_ipfs: Vec<u8>},
-		/// Carbon credites burned by `account`.
+		/// Carbon assets has been burned by the `account`.
 		CarbonCreditsBurned { account: T::AccountId, asset_id: AssetId, amount: T::Balance },
+		/// Carbon asset `lot` has been created by  the `account`.
+		CarbonAssetLotCreated { 
+			asset_id: AssetId, 
+			account: T::AccountId, 
+			expiration_date: T::Moment,
+			lot: CarbonAssetLot<T::AccountId, T::Balance, T::Balance>
+		},
 	}
 
 	#[pallet::error]
@@ -543,6 +550,8 @@ pub mod pallet {
 		NoMetadata,
 		/// Project data cannot be changed after minting.
 		CannotChangeAfterMint,
+		/// Deadline should be in the future.
+		DeadlineIncorrect,
 	}
 
 	#[pallet::call]
@@ -1396,51 +1405,179 @@ pub mod pallet {
 			Self::do_refund(id, ensure_signed(origin)?, allow_burn)
 		}
 
-		/// Method: create_carbon_credit_lot
-		/// Arguments: origin: OriginFor<T> - transaction caller
-		///			   asset_id: CarbonCreditsId<T> - Carbon Credit asset id
-		///			   new_lot: CarbonCreditsPackageLotOf<T> - new lot of Carbon Credits to auction off
-		/// Access: for Carbon Credits holder
+		/// Creates new Carbon asset Lot of given asset_id. 
 		/// 
-		/// Creates new Carbon Credits Lot of given asset_id. 
-		/// CarbonCreditsPackageLotOf new_lot contains:
-		/// 			"target_bearer" - optional, if set - lot is private
-		/// 			"deadline" - lot can be sold only before deadline
-		/// 			"amount" - amount of Carbon Credits for sell
-		/// 			"price_per_item" - price per one Carbon Credit
-		/// Function checks if deadline is correct, if caller has enough Carbon Credits.
-		/// Function purges another expired lots for this caller.
+		///	- `asset_id`: CarbonCreditsId<T> - Carbon assets asset id
+		/// - `deadline` - lot can be sold only before deadline
+		///	- `new_lot`: CarbonAssetLot<T> - new lot of Carbon asset to auction off
+		/// 
+		/// Access: for Carbon asset holder
+		/// 
+		/// CarbonAssetLot new_lot contains:
+		/// - `target_bearer` - optional, if set - lot is private
+		/// - `amount` - amount of Carbon asset for sell
+		/// - `total_price` - price of whole lot
+		/// 
+		/// Checks if `deadline` is correct, if caller has enough Carbon assets.
+		/// Purges another expired lots for this caller.
 		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(3, 2))]
-		pub fn create_carbon_credit_lot(
+		pub fn create_carbon_asset_lot(
 			origin: OriginFor<T>,
 			#[pallet::compact] asset_id: AssetId,
-			new_lot: CarbonCreditsPackageLot<T::AccountId, T::Balance, T::Balance>,
+			deadline: T::Moment,
+			new_lot: CarbonAssetLot<T::AccountId, T::Balance, T::Balance>,
 		) -> DispatchResult {
+			let caller = ensure_signed(origin)?;
+			let now = pallet_timestamp::Pallet::<T>::get();
+			ensure!(deadline >= now, Error::<T, I>::DeadlineIncorrect);
+
+			Account::<T,I>::try_mutate(asset_id, &caller, |data_opt| -> DispatchResult {
+				match data_opt {
+					None => Err(Error::<T,I>::BalanceLow)?,
+					Some(data) => {
+						// remove expired lot and unreserve balance
+						let unreserved_opt = Self::remove_expired_lots(asset_id, &caller, now);
+						if let Some(unreserved) = unreserved_opt {
+							data.balance = data.balance.checked_add(&unreserved).ok_or(ArithmeticError::Overflow)?;
+						}
+						
+						ensure!(data.balance >= new_lot.amount, Error::<T,I>::BalanceLow);
+
+						CarbonAssetLotRegistry::<T,I>::insert((asset_id, &caller, deadline), new_lot.clone());
+
+						// reserve assets for lot
+						data.reserved_balance = data.reserved_balance.checked_add(&new_lot.amount).ok_or(ArithmeticError::Overflow)?;
+						data.balance = data.balance.saturating_sub(new_lot.amount);
+						Ok(())
+					}
+				}
+			})?;
+			Ok(())
+		}
+
+
+		/// Expires and deletes a specified lot. All others expired lots are also deleted.
+		/// 
+		/// - `asset_id`: AssetId - Lot asset id 
+		/// - `deadline`: T::Moment - Lot deadline
+		/// 
+		/// Access: lot owner
+		///  
+		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(3, 2))]
+		pub fn expire_lot(
+			origin: OriginFor<T>,
+			#[pallet::compact] asset_id: AssetId,
+			deadline: T::Moment,
+		) -> DispatchResult {
+			let caller = ensure_signed(origin)?;
+			let now = pallet_timestamp::Pallet::<T>::get();
+
+			Account::<T,I>::try_mutate(asset_id, &caller, |data_opt| -> DispatchResult {
+				match data_opt {
+					None => Err(Error::<T,I>::BalanceLow)?,
+					Some(data) => {
+						// remove expired lot and unreserve balance
+						let unreserved_opt = Self::remove_expired_lots(asset_id, &caller, now);
+						if let Some(unreserved) = unreserved_opt {
+							data.balance = data.balance.checked_add(&unreserved).ok_or(ArithmeticError::Overflow)?;
+						}
+						
+						// remove lot and unreserve assets for lot
+						let lot_opt = CarbonAssetLotRegistry::<T,I>::take((asset_id, &caller, deadline));
+						if let Some(lot) = lot_opt {
+							data.reserved_balance = data.reserved_balance.saturating_sub(lot.amount);
+							data.balance = data.balance.checked_add(&lot.amount).ok_or(ArithmeticError::Overflow)?;
+						}		
+						Ok(())
+					}
+				}
+			})?;
 			Ok(())
 		}
 
 		/// Method: buy_carbon_credit_lot_units
-		/// Arguments: origin: OriginFor<T> - transaction caller
-		///				seller: T::AccountId - lot seller
-		///				asset_id: CarbonCreditsId<T> - Carbon Credit asset id
-		///				lot: CarbonCreditsPackageLotOf<T> - from whitch Carbon Credits are bought 
-		///				amount: CarbonCreditsBalance<T> - amount of Carbon Credits to buy
+		/// 
+		///	- `seller`: T::AccountId - lot seller
+		///	- `asset_id`: AssetId - Carbon assets asset id
+		///	- `deadline`: T::Moment - expiration time for the lot 
+		///	- `amount`: T::Balance - amount of Carbon asset to buy
+		/// 
 		/// Access: any account having enough EverUSD,
 		/// 		for private lot - only account in that lot
 		/// 
-		/// Buys a specified amount of Carbon Credits from specified lot created by 
-		/// create_carbon_credit_lot(..) call. Lot should not be expired. 
+		/// Buys a specified amount of Carbon asset from specified lot created by 
+		/// `create_carbon_credit_lot` call. Lot should not be expired. 
+		/// 
 		/// Buyer should have enough EverUSD balance. If lot is private 
-		/// (lot.targer_bearer are set) - only target_bearer can buy from that lot. 
+		/// (`lot.targer_bearer` are set) - only `target_bearer` can buy from that lot. 
 		/// After selling other expired seller's lots are purged.
 		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(5, 3))]
-		pub fn buy_carbon_credit_lot_units(
+		pub fn buy_carbon_asset_lot_units(
 			origin: OriginFor<T>,
 			#[pallet::compact] asset_id: AssetId,
 			seller: T::AccountId,
-			mut lot: CarbonCreditsPackageLot<T::AccountId, T::Balance, T::Balance>,
-			#[pallet::compact] amount: T::Balance,
+			deadline: T::Moment,
+			// #[pallet::compact] amount: T::Balance,
 		) -> DispatchResult {
+			let caller = ensure_signed(origin)?;
+			let now = pallet_timestamp::Pallet::<T>::get();
+			// ensure!(deadline >= now, Error::<T, I>::DeadlineIncorrect);
+
+			// first - fix diying if balance low but reserved >0
+			// remove expired lot and unreserve balance
+			// transfer asset_id from seller reserved to caller balance
+			// check if Account(asset_id,seller) is dead -> remove
+			// transfer everusd from caller balance to seller balance
+			// check if Account(everusd_id,caller) is dead -> remove
+
+			// Account::<T,I>::try_mutate(asset_id, &seller, |data_opt| -> DispatchResult {
+			// 	match data_opt {
+			// 		None => Err(Error::<T,I>::BalanceLow)?,
+			// 		Some(data) => {
+			// 			CarbonAssetLotRegistry::<T,I>::try_mutate_exists((asset_id, &seller, deadline), |lot_opt| -> DispatchResult {
+			// 				match lot_opt {
+			// 					None => Err(Error::<T,I>::BalanceLow)?,
+			// 					Some(lot) => {
+			// 						// check if everusd is enough
+			// 						let everusd_caller = Account::<T,I>::get(EVERUSD_ID, &caller);
+			// 						ensure!(everusd_caller.is_some(), Error::<T,I>::BalanceLow);
+			// 						ensure!(everusd_caller.unwrap().balance >= lot.total_price, Error::<T,I>::BalanceLow);
+
+			// 						// transfer cabon assets
+
+			// 						Account::<T, I>::try_mutate(asset_id, &caller, |caller_opt| -> DispatchResult {
+			// 							match caller_opt {
+			// 								Some(ref mut account) => {
+			// 									account.balance.saturating_accrue(lot.amount);
+			// 								},
+			// 								None => {
+			// 									*caller_opt = Some(AssetAccountOf::<T, I> {
+			// 										balance: lot.amount,
+			// 										reserved_balance: Zero::zero(),
+			// 										is_frozen: false,
+			// 										reason: Self::new_account(&caller, details, None)?,
+			// 										extra: T::Extra::default(),
+			// 									});
+			// 								}
+			// 							};
+			// 							ensure!(data.reserved_balance >= lot.amount, Error::<T,I>::BalanceLow);
+			// 							data.reserved_balance = data.reserved_balance.saturating_sub(lot.amount);
+	
+			// 							// transfer everusd
+			// 							let f = TransferFlags { keep_alive: false, best_effort: false, burn_dust: false };
+			// 							Self::do_transfer(EVERUSD_ID, &caller, &seller, lot.total_price, None, f)?;
+			// 							Ok(())
+			// 						});
+			// 						*lot_opt = None;
+			// 						Ok(())
+			// 					}
+			// 				}	
+			// 			})?;
+			// 			Ok(())
+			// 		}
+			// 	}
+			// })?;
+
 			Ok(())
 		}
 	}

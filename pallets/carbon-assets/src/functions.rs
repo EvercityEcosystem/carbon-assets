@@ -949,4 +949,29 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		
 		rand.as_ref().to_vec()
 	}
+
+	pub(super) fn remove_expired_lots(asset_id: AssetId, caller: &T::AccountId, now: T::Moment) -> Option<T::Balance> {
+		let lots = CarbonAssetLotRegistry::<T,I>::iter_prefix((asset_id, &caller));
+		let expired: Vec<T::Moment> = lots.map(|l| l.0).filter(|t| {*t <= now}).collect();
+		let mut unreserved: T::Balance = Zero::zero();
+		for expd in expired.iter() {
+			let l = CarbonAssetLotRegistry::<T,I>::take((asset_id, &caller, expd));
+			if let Some(sl) = l {
+				unreserved = unreserved + sl.amount;
+			}
+		}
+		if unreserved == Zero::zero() {None} else {Some(unreserved)}
+	}
+
+	pub(super) fn do_buy_lot(
+		id: AssetId,
+		seller: &T::AccountId,
+		buyer: &T::AccountId,
+
+	) -> DispatchResult {
+		let mut seller_account = Account::<T, I>::get(id, &seller).ok_or(Error::<T, I>::NoAccount)?;
+
+		Account::<T, I>::insert(id, &seller, &seller_account);
+		Ok(())
+	}
 }

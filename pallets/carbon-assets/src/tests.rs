@@ -1155,3 +1155,45 @@ fn custodian_cannot_burn_more() {
 		assert_eq!(Some(100), BurnCertificate::<Test>::get(user, id));
 	})
 }
+
+// Test lot logic 
+
+#[test]
+fn create_lot_ok() {
+	// check user.balance and reserved_balance
+	// check lot exists
+}
+
+#[test]
+fn create_lot_incorrect_deadline_fails() {
+	// the deadline has passed 
+}
+
+#[test]
+fn create_lot_incorrect_amount_fails() {
+
+}
+
+#[test]
+fn buy_lot_ok() {
+	// check everusd balances
+	// check carbon asset balances
+	// check lot existence
+	// try to transfer assets
+}
+
+#[test]
+fn buy_lot_not_exists_fails() {
+
+}
+
+
+#[test]
+fn buy_lot_not_enough_everusd_fails() {
+
+}
+
+#[test]
+fn buy_lot_not_enough_фьщгте_fails() {
+
+}
