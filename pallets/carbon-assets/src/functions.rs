@@ -333,7 +333,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		let deposit = account.reason.take_deposit().ok_or(Error::<T, I>::NoDeposit)?;
 		let mut details = Asset::<T, I>::get(&id).ok_or(Error::<T, I>::Unknown)?;
 
-		ensure!(account.balance.is_zero() || allow_burn, Error::<T, I>::WouldBurn);
+		ensure!((account.balance.is_zero() && account.reserved_balance.is_zero()) || allow_burn, Error::<T, I>::WouldBurn);
 		ensure!(!details.is_frozen, Error::<T, I>::Frozen);
 		ensure!(!account.is_frozen, Error::<T, I>::Frozen);
 
@@ -492,7 +492,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 
 				// Make the debit.
 				account.balance = account.balance.saturating_sub(actual);
-				if account.balance < details.min_balance {
+				if account.balance < details.min_balance && account.reserved_balance < details.min_balance {
 					debug_assert!(account.balance.is_zero(), "checked in prep; qed");
 					target_died = Some(Self::dead_account(target, details, &account.reason, false));
 					if let Some(Remove) = target_died {
@@ -610,7 +610,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 			})?;
 
 			// Remove source account if it's now dead.
-			if source_account.balance < details.min_balance {
+			if source_account.balance < details.min_balance && source_account.reserved_balance < details.min_balance {
 				debug_assert!(source_account.balance.is_zero(), "checked in prep; qed");
 				source_died =
 					Some(Self::dead_account(source, details, &source_account.reason, false));

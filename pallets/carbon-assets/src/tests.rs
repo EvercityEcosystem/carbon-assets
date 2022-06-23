@@ -39,16 +39,16 @@ fn can_mint_only_to_owner() {
 fn minting_too_many_insufficient_assets_fails() {
 	new_test_ext().execute_with(|| {
 		assert_ok!(Assets::force_create(Origin::root(), 0, 1, false, 1));
-		assert_ok!(Assets::force_create(Origin::root(), 1, 1, false, 1));
-		assert_ok!(Assets::force_create(Origin::root(), 2, 1, false, 1));
+		assert_ok!(Assets::force_create(Origin::root(), 11, 1, false, 1));
+		assert_ok!(Assets::force_create(Origin::root(), 21, 1, false, 1));
 		Balances::make_free_balance_be(&1, 100);
 		assert_ok!(Assets::mint(Origin::signed(1), 0, 100));
-		assert_ok!(Assets::mint(Origin::signed(1), 1, 100));
-		assert_noop!(Assets::mint(Origin::signed(1), 2, 100), TokenError::CannotCreate);
+		assert_ok!(Assets::mint(Origin::signed(1), 11, 100));
+		assert_noop!(Assets::mint(Origin::signed(1), 21, 100), TokenError::CannotCreate);
 
 		Balances::make_free_balance_be(&2, 1);
 		assert_ok!(Assets::transfer(Origin::signed(1), 0, 2, 100));
-		assert_ok!(Assets::mint(Origin::signed(1), 2, 100));
+		assert_ok!(Assets::mint(Origin::signed(1), 21, 100));
 	});
 }
 
@@ -56,17 +56,17 @@ fn minting_too_many_insufficient_assets_fails() {
 fn minting_insufficient_asset_with_deposit_should_work_when_consumers_exhausted() {
 	new_test_ext().execute_with(|| {
 		assert_ok!(Assets::force_create(Origin::root(), 0, 1, false, 1));
-		assert_ok!(Assets::force_create(Origin::root(), 1, 1, false, 1));
-		assert_ok!(Assets::force_create(Origin::root(), 2, 1, false, 1));
+		assert_ok!(Assets::force_create(Origin::root(), 11, 1, false, 1));
+		assert_ok!(Assets::force_create(Origin::root(), 21, 1, false, 1));
 		Balances::make_free_balance_be(&1, 100);
 		assert_ok!(Assets::mint(Origin::signed(1), 0, 100));
-		assert_ok!(Assets::mint(Origin::signed(1), 1, 100));
-		assert_noop!(Assets::mint(Origin::signed(1), 2, 100), TokenError::CannotCreate);
+		assert_ok!(Assets::mint(Origin::signed(1), 11, 100));
+		assert_noop!(Assets::mint(Origin::signed(1), 21, 100), TokenError::CannotCreate);
 
-		assert_ok!(Assets::touch(Origin::signed(1), 2));
+		assert_ok!(Assets::touch(Origin::signed(1), 21));
 		assert_eq!(Balances::reserved_balance(&1), 10);
 
-		assert_ok!(Assets::mint(Origin::signed(1), 2, 100));
+		assert_ok!(Assets::mint(Origin::signed(1), 21, 100));
 	});
 }
 
@@ -605,8 +605,11 @@ fn transferring_less_than_one_unit_is_fine() {
 		assert_ok!(Assets::mint(Origin::signed(1), 0, 100));
 		assert_eq!(Assets::balance(0, 1), 100);
 		assert_ok!(Assets::transfer(Origin::signed(1), 0, 2, 0));
-		// `ForceCreated` and `Issued` but no `Transferred` event.
-		assert_eq!(System::events().len(), 2);
+		// `ForceCreated`, `NewAccount` and `Issued` but no `Transferred` event.
+		println!("{:?}", System::events());
+		assert_eq!(System::events().len(), 3);
+		assert!(!System::events().iter().any(|x| {x.event == mock::Event::Assets(crate::Event::Transferred { 
+				asset_id: 0, from: 1, to: 2, amount: 0 }) }));
 	});
 }
 
@@ -744,7 +747,7 @@ fn force_metadata_should_work() {
 
 		// attempt to set metadata for non-existent asset class
 		assert_noop!(
-			Assets::force_set_metadata(Origin::root(), 1, vec![0u8; 10], vec![0u8; 10], vec![0u8; 10],
+			Assets::force_set_metadata(Origin::root(), 11, vec![0u8; 10], vec![0u8; 10], vec![0u8; 10],
 			vec![0u8; 10], 8, false),
 			Error::<Test>::Unknown
 		);
@@ -784,7 +787,7 @@ fn force_metadata_should_work() {
 		assert!(!Metadata::<Test>::contains_key(0));
 
 		// Error handles clearing non-existent asset class
-		assert_noop!(Assets::force_clear_metadata(Origin::root(), 1), Error::<Test>::Unknown);
+		assert_noop!(Assets::force_clear_metadata(Origin::root(), 11), Error::<Test>::Unknown);
 	});
 }
 
@@ -815,7 +818,7 @@ fn force_asset_status_should_work() {
 
 		// force asset status will not execute for non-existent class
 		assert_noop!(
-			Assets::force_asset_status(Origin::root(), 1, 1, 1, 1, 1, 90, true, false),
+			Assets::force_asset_status(Origin::root(), 11, 1, 1, 1, 1, 90, true, false),
 			Error::<Test>::Unknown
 		);
 
@@ -860,10 +863,8 @@ fn balance_conversion_should_work() {
 #[test]
 fn assets_from_genesis_should_exist() {
 	new_test_ext().execute_with(|| {
-		assert!(Asset::<Test>::contains_key(999));
-		assert!(Metadata::<Test>::contains_key(999));
-		assert_eq!(Assets::balance(999, 1), 100);
-		assert_eq!(Assets::total_supply(999), 100);
+		assert!(Asset::<Test>::contains_key(EVERUSD_ID));
+		assert!(Metadata::<Test>::contains_key(EVERUSD_ID));
 	});
 }
 
